@@ -1,15 +1,16 @@
 Tech Blog
 =========
 
-Local blog test
+Theme
+-----
+
+https://github.com/bencentra/centrarium
+
+Local test
+---------------
 
 > bundle exec jekyll serve
 
 > bundle exec jekyll build --verbose
 
-> bundle exec jekyll serve --future
-
-
-Local 에서 post 가 생성되지 않은 경우
-
-https://stackoverflow.com/questions/30625044/jekyll-post-not-generated
+> bundle exec jekyll serve --future 
