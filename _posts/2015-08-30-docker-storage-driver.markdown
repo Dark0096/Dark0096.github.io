@@ -14,10 +14,9 @@ Learn how to use volumes to persist data and improve performance.
 
 Images and layers
 
-Docker 이미지는 일련의 Layer 들로 구성됩니다. 각각의 Layer 는 이미지를 생성하기 위하여 사용된 Dockerfile 의 명령어들로 표현됩니다.
-
-Each layer represents an instruction in the image’s Dockerfile.
-Each layer except the very last one is read-only. Consider the following Dockerfile:
+Docker 이미지는 일련의 Layer 들로 구성됩니다. 각각의 Layer 는 Dockerfile 의 명령어들로 표현됩니다.
+각 Layer 는 마지막의 Layer 를 제외하고는 읽기 전용입니다.
+다음의 Dockerfile 을 참조하십시오. 
 
 {% highlight bash %}
 FROM ubuntu:15.04
@@ -25,3 +24,6 @@ COPY . /app
 RUN make /app
 CMD python /app/app.py
 {% endhighlight %}
+
+Reference
+https://docs.docker.com/storage/storagedriver
