@@ -7,6 +7,8 @@ Local blog test
 
 > bundle exec jekyll build --verbose
 
+> bundle exec jekyll serve --future
+
 
 Local 에서 post 가 생성되지 않은 경우
 
