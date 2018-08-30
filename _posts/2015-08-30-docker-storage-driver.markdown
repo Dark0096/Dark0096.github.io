@@ -37,7 +37,7 @@ Docker 는 새로운 container 를 생성할 때, 기본적인 layer 위에 새�
 실행중인 컨테이너에 대한 모든 변경 사항(새로운 파일 작성, 기존 파일 수정 및 삭제)은 `Thin R/W layer == container layer` 에 기록됩니다.
 아래의 다이어그램은 Ubuntu 15.04 image 를 기반으로 한 container 를 보여줍니다.
 
-<img src="/assets/post/container-layers.png" title="Container layers">
+<img src="https://raw.githubusercontent.com/Dark0096/Dark0096.github.io/master/assets/post/container-layers.png" title="Container layers">
 
 Storage driver 는 이러한 layer 들과 상호 작용하는 방법에 대한 세부적인 부분을 처리합니다. 
 다양한 Storage driver 를 사용할 수 있으며 상황에 따라 장점과 단점을 가지고 있습니다.
