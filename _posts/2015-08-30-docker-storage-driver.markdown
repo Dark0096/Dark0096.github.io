@@ -8,7 +8,7 @@ tags: docker
 ---
 
 Storage driver 를 효율적으로 사용하기 위해서는 Docker 가 image 를 build 하고 저장하는 방법과 이러한 image 들을 container 들에서 어떻게 사용되고 있는지 아는 것이 중요합니다.
-이 정보를 사용하여 application 의 데이터를 유지하고 성능 문제를 피할 수 있는 가장 좋은 방법을 에 대한 정보를 얻을 수 있습니다.
+이 정보를 사용하여 application 의 데이터를 유지하고 성능 문제를 피할 수 있는 가장 좋은 방법에 대한 정보를 얻을 수 있습니다.
 
 Storage driver 는 Container 의 쓰기 가능한 Layer 에 데이터를 생성할 수 있습니다. 파일들은 container 가 중지된 이후에는 유지되지 않으며 read 와 write 의 속도가 낮습니다. Volume 을 사용하여 데이터를 보존하고 성능을 향상시키는 방법을 알아봅시다.
 
@@ -24,11 +24,13 @@ RUN make /app
 CMD python /app/app.py
 {% endhighlight %}
 
-이 Dockerfile 은 4 개의 layer 를 생성하는 command 를 포함하고 있습니다.  
-FROM 문은 `ubuntu:15.04` image 로부터 layer 를 생성하는 것으로 시작합니다.  
-COPY 문은 Docker client 의 현재 디렉토리 경로의 파일들을 추가합니다.  
-RUN 문은 make command 를 사용하여 application 을 빌드합니다.  
-CMD 문은 마지막 layer 는 container 내부에서 어떤 command 를 실행할지 지정합니다.  
+이 Dockerfile 은 4 개의 layer 를 생성하는 command 를 포함하고 있습니다.
+<code>  
+FROM 문은 `ubuntu:15.04` image 로부터 layer 를 생성하는 것으로 시작합니다.<br/>  
+COPY 문은 Docker client 의 현재 디렉토리 경로의 파일들을 추가합니다.<br/>
+RUN 문은 make command 를 사용하여 application 을 빌드합니다.<br/>
+CMD 문은 마지막 layer 는 container 내부에서 어떤 command 를 실행할지 지정합니다.
+</code>  
 
 각각의 layer 는 이전 layer 로부터 차이점의 집합입니다.
 Layer 들은 서로 층을 이루며 쌓여져 있습니다.
@@ -41,6 +43,14 @@ Docker 는 새로운 container 를 생성할 때, 기본적인 layer 위에 새�
 
 Storage driver 는 이러한 layer 들과 상호 작용하는 방법에 대한 세부적인 부분을 처리합니다. 
 다양한 Storage driver 를 사용할 수 있으며 상황에 따라 장점과 단점을 가지고 있습니다.
+
+
+Container and layers
+The major difference between a container and an image is the top writable layer. 
+All writes to the container that add new or modify existing data are stored in this writable layer. When the container is deleted, the writable layer is also deleted. The underlying image remains unchanged.
+
+Because each container has its own writable container layer, and all changes are stored in this container layer, multiple containers can share access to the same underlying image and yet have their own data state. The diagram below shows multiple containers sharing the same Ubuntu 15.04 image.
+<img src="https://raw.githubusercontent.com/Dark0096/Dark0096.github.io/master/assets/post/sharing-layers.png" title="Container layers">
 
 ### Reference  
 [docker-storage-driver]
