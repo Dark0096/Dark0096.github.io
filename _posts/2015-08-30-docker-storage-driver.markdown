@@ -183,13 +183,13 @@ Docker 는 이미 첫 번째 이미지의 모든 레이어를 가지고 있으�
   Step 2/2 : CMD /app/hello.sh
    ---> Running in a07b694759ba
    ---> dbf995fc07ff
-  {% endhighlight %}  
-  </li>
-  <li>
   Removing intermediate container a07b694759ba
   Successfully built dbf995fc07ff
   Successfully tagged acme/my-final-image:1.0
-  Check out the sizes of the images:
+  {% endhighlight %}  
+  </li>
+  <li>
+  이미지의 크기를 확인하십시오:
   {% highlight bash %}
   $ docker image ls
   
@@ -199,7 +199,7 @@ Docker 는 이미 첫 번째 이미지의 모든 레이어를 가지고 있으�
   {% endhighlight %}
   </li>
   <li>
-  Check out the layers that comprise each image:
+  각 이미지를 구성하는 레이어를 확인하십시오:
   
   {% highlight bash %}
   $ docker history bd09118bcef6
@@ -226,83 +226,114 @@ Docker 는 이미 첫 번째 이미지의 모든 레이어를 가지고 있으�
   </li>
 </ol>
 
-Notice that all the layers are identical except the top layer of the second image. All the other layers are shared between the two images, and are only stored once in /var/lib/docker/. The new layer actually doesn’t take any room at all, because it is not changing any files, but only running a command.
+모든 레이어는 두 번째 이미지의 맨 위 레이어를 제외하고 동일하다는 점에 유의하십시오. 
+다른 모든 레이어는 두 이미지간에 공유되며 /var/lib/docker/ 에 한 번만 저장됩니다. 
+새로운 레이어는 파일을 변경하지 않고 명령만 실행하기 때문에 실제로 아무런 공간도 차지하지 않습니다.
 
-Note: The <missing> lines in the docker history output indicate that those layers were built on another system and are not available locally. This can be ignored.
+`Note: docker 히스토리 출력의 <missing> 행은 해당 계층이 다른 시스템에서 작성되었으며 로컬에서 사용할 수 없음을 나타냅니다. 이것은 무시해도 됩니다.`
 
-Copying makes containers efficient
-When you start a container, a thin writable container layer is added on top of the other layers. Any changes the container makes to the filesystem are stored here. Any files the container does not change do not get copied to this writable layer. This means that the writable layer is as small as possible.
+### Copying makes containers efficient
+컨테이너를 시작할 때 thin writable container layer 가 다른 레이어 위에 추가됩니다.
+컨테이너가 파일 시스템을 변경하면 여기에 저장됩니다.
+컨테이너가 변경하지 않는 파일은 이 쓰기 가능한 레이어에 복사되지 않습니다.
+즉, thin writable container layer 는 최소한의 사이즈만을 갖고 있습니다.
 
-When an existing file in a container is modified, the storage driver performs a copy-on-write operation. The specifics steps involved depend on the specific storage driver. For the default aufs driver and the overlay and overlay2 drivers, the copy-on-write operation follows this rough sequence:
+컨테이너의 기존 파일이 수정되면 저장소 드라이버는 쓰기시 복사 작업을 수행합니다.
+관련된 구체적인 단계는 특정 저장 장치 드라이버에 따라 다릅니다.
+기본 `aufs` driver 와 `overlay` 및 `overlay2` driver 의 경우 copy-on-write 작업은 다음과 같은 대략적인 순서를 따릅니다.
 
-Search through the image layers for the file to update. The process starts at the newest layer and works down to the base layer one layer at a time. When results are found, they are added to a cache to speed future operations.
+<ul>
+  <li>
+  이미지 레이어를 검색하여 업데이트할 파일을 찾습니다.
+  이 프로세스는 최신 레이어에서 시작하여 한 번에 기본 레이어로 한 레이어씩 작업합니다.
+  결과가 발견되면 향후 작업 속도를 높이기 위해 캐시에 추가됩니다.
+  </li>
+  <li>
+  찾은 파일의 첫 번째 복사본에 대해 copy_up 작업을 수행하여 파일을 컨테이너의 쓰기 가능한 계층에 복사합니다.
+  </li>
+  <li>
+  이 파일 복사본을 수정하면 컨테이너는 하위 계층에 있는 파일의 읽기 전용 복사본을 볼 수 없습니다.
+  </li>
+</ul>
 
-Perform a copy_up operation on the first copy of the file that is found, to copy the file to the container’s writable layer.
+Btrfs, ZFS 및 다른 드라이버는 copy-on-write 를 다르게 처리합니다.
+이 드라이버의 방법에 대해서는 나중에 자세히 설명합니다.
 
-Any modifications are made to this copy of the file, and the container cannot see the read-only copy of the file that exists in the lower layer.
+많은 양의 데이터를 쓰는 컨테이너는 그렇지 않은 컨테이너보다 더 많은 공간을 소비합니다.
+이는 대부분의 쓰기 작업이 컨테이너의 thin writable 한 최상위 영역에서 새로운 공간을 사용하기 때문입니다.
 
-Btrfs, ZFS, and other drivers handle the copy-on-write differently. You can read more about the methods of these drivers later in their detailed descriptions.
+`Note: 쓰기가 많은 응용 프로그램의 경우 컨테이너에 데이터를 저장하면 안됩니다. 대신 Docker 볼륨을 사용하십시오. Docker 볼륨은 실행중인 컨테이너와 독립적이며 I/O 에 효율적으로 설계되었습니다. 또한 볼륨을 컨테이너간에 공유할 수 있으며 컨테이너의 쓰기 가능한 레이어 크기를 늘리지는 않습니다.`
 
-Containers that write a lot of data consume more space than containers that do not. This is because most write operations consume new space in the container’s thin writable top layer.
+copy_up 조작은 현저한 성능 오버 헤드를 초래할 수 있습니다. 이 오버 헤드는 사용중인 스토리지 드라이버에 따라 다릅니다. 
+대용량 파일, 많은 레이어 및 딥 디렉토리 트리를 사용하면 영향을 더 두드러지게 만들 수 있습니다. 
+이는 각 copy_up 조작이 주어진 파일이 처음 수정될 때만 발생한다는 사실에 의해 완화됩니다.
 
-Note: for write-heavy applications, you should not store the data in the container. Instead, use Docker volumes, which are independent of the running container and are designed to be efficient for I/O. In addition, volumes can be shared among containers and do not increase the size of your container’s writable layer.
+copy-on-write 가 작동하는 방식을 확인하기 위해 다음 절차에서는 앞에서 작성한 acme/my-final-image:1.0 이미지를 기반으로 5 개의 컨테이너를 회전시키고 그들이 차지하는 공간을 조사합니다.
 
-A copy_up operation can incur a noticeable performance overhead. This overhead is different depending on which storage driver is in use. Large files, lots of layers, and deep directory trees can make the impact more noticeable. This is mitigated by the fact that each copy_up operation only occurs the first time a given file is modified.
+`Note: This procedure doesn’t work on Docker for Mac or Docker for Windows.`
 
-To verify the way that copy-on-write works, the following procedures spins up 5 containers based on the acme/my-final-image:1.0 image we built earlier and examines how much room they take up.
-
-Note: This procedure doesn’t work on Docker for Mac or Docker for Windows.
-
-From a terminal on your Docker host, run the following docker run commands. The strings at the end are the IDs of each container.
-{% highlight bash %}
-$ docker run -dit --name my_container_1 acme/my-final-image:1.0 bash \
-  && docker run -dit --name my_container_2 acme/my-final-image:1.0 bash \
-  && docker run -dit --name my_container_3 acme/my-final-image:1.0 bash \
-  && docker run -dit --name my_container_4 acme/my-final-image:1.0 bash \
-  && docker run -dit --name my_container_5 acme/my-final-image:1.0 bash
-
-  c36785c423ec7e0422b2af7364a7ba4da6146cbba7981a0951fcc3fa0430c409
-  dcad7101795e4206e637d9358a818e5c32e13b349e62b00bf05cd5a4343ea513
+<ol>
+  <li>
+  Docker 호스트의 터미널에서 다음 도커 실행 명령을 실행합니다. 끝에있는 문자열은 각 컨테이너의 ID입니다.
+  {% highlight bash %}
+  $ docker run -dit --name my_container_1 acme/my-final-image:1.0 bash \
+    && docker run -dit --name my_container_2 acme/my-final-image:1.0 bash \
+    && docker run -dit --name my_container_3 acme/my-final-image:1.0 bash \
+    && docker run -dit --name my_container_4 acme/my-final-image:1.0 bash \
+    && docker run -dit --name my_container_5 acme/my-final-image:1.0 bash
+  
+    c36785c423ec7e0422b2af7364a7ba4da6146cbba7981a0951fcc3fa0430c409
+    dcad7101795e4206e637d9358a818e5c32e13b349e62b00bf05cd5a4343ea513
+    1e7264576d78a3134fbaf7829bc24b1d96017cf2bc046b7cd8b08b5775c33d0c
+    38fa94212a419a082e6a6b87a8e2ec4a44dd327d7069b85892a707e3fc818544
+    1a174fc216cccf18ec7d4fe14e008e30130b11ede0f0f94a87982e310cf2e765
+  {% endhighlight %}
+  </li>
+  <li>
+  docker ps 명령을 실행하여 5 개의 컨테이너가 실행 중인지 확인하십시오:
+  
+  {% highlight bash %}
+  CONTAINER ID      IMAGE                     COMMAND     CREATED              STATUS              PORTS      NAMES
+  1a174fc216cc      acme/my-final-image:1.0   "bash"      About a minute ago   Up About a minute              my_container_5
+  38fa94212a41      acme/my-final-image:1.0   "bash"      About a minute ago   Up About a minute              my_container_4
+  1e7264576d78      acme/my-final-image:1.0   "bash"      About a minute ago   Up About a minute              my_container_3
+  dcad7101795e      acme/my-final-image:1.0   "bash"      About a minute ago   Up About a minute              my_container_2
+  c36785c423ec      acme/my-final-image:1.0   "bash"      About a minute ago   Up About a minute              my_container_1
+  {% endhighlight %}
+  </li>
+  <li>
+  로컬 저장 영역의 내용을 나열하십시오:
+  {% highlight bash %}
+  $ sudo ls /var/lib/docker/containers
+  
+  1a174fc216cccf18ec7d4fe14e008e30130b11ede0f0f94a87982e310cf2e765
   1e7264576d78a3134fbaf7829bc24b1d96017cf2bc046b7cd8b08b5775c33d0c
   38fa94212a419a082e6a6b87a8e2ec4a44dd327d7069b85892a707e3fc818544
-  1a174fc216cccf18ec7d4fe14e008e30130b11ede0f0f94a87982e310cf2e765
-{% endhighlight %}
-Run the docker ps command to verify the 5 containers are running.
+  c36785c423ec7e0422b2af7364a7ba4da6146cbba7981a0951fcc3fa0430c409
+  dcad7101795e4206e637d9358a818e5c32e13b349e62b00bf05cd5a4343ea513
+  {% endhighlight %}
+  </li>
+  <li>
+  이제 크기를 확인하십시오:
+  
+  {% highlight bash %}
+  $ sudo du -sh /var/lib/docker/containers/*
+  
+  32K  /var/lib/docker/containers/1a174fc216cccf18ec7d4fe14e008e30130b11ede0f0f94a87982e310cf2e765
+  32K  /var/lib/docker/containers/1e7264576d78a3134fbaf7829bc24b1d96017cf2bc046b7cd8b08b5775c33d0c
+  32K  /var/lib/docker/containers/38fa94212a419a082e6a6b87a8e2ec4a44dd327d7069b85892a707e3fc818544
+  32K  /var/lib/docker/containers/c36785c423ec7e0422b2af7364a7ba4da6146cbba7981a0951fcc3fa0430c409
+  32K  /var/lib/docker/containers/dcad7101795e4206e637d9358a818e5c32e13b349e62b00bf05cd5a4343ea513
+  {% endhighlight %}
+  이 컨테이너들 각각은 파일 시스템상의 32k 공간만을 차지합니다.
+  </li>
+</ol>
 
-{% highlight bash %}
-CONTAINER ID      IMAGE                     COMMAND     CREATED              STATUS              PORTS      NAMES
-1a174fc216cc      acme/my-final-image:1.0   "bash"      About a minute ago   Up About a minute              my_container_5
-38fa94212a41      acme/my-final-image:1.0   "bash"      About a minute ago   Up About a minute              my_container_4
-1e7264576d78      acme/my-final-image:1.0   "bash"      About a minute ago   Up About a minute              my_container_3
-dcad7101795e      acme/my-final-image:1.0   "bash"      About a minute ago   Up About a minute              my_container_2
-c36785c423ec      acme/my-final-image:1.0   "bash"      About a minute ago   Up About a minute              my_container_1
-{% endhighlight %}
-List the contents of the local storage area.
-{% highlight bash %}
-$ sudo ls /var/lib/docker/containers
+copy-on-write 는 공간을 절약 할뿐만 아니라 시작 시간을 줄여줍니다.
+container (또는 동일한 이미지에서 여러 컨테이너)를 시작하면 Docker 는 writable container layer 만 만들면됩니다.
 
-1a174fc216cccf18ec7d4fe14e008e30130b11ede0f0f94a87982e310cf2e765
-1e7264576d78a3134fbaf7829bc24b1d96017cf2bc046b7cd8b08b5775c33d0c
-38fa94212a419a082e6a6b87a8e2ec4a44dd327d7069b85892a707e3fc818544
-c36785c423ec7e0422b2af7364a7ba4da6146cbba7981a0951fcc3fa0430c409
-dcad7101795e4206e637d9358a818e5c32e13b349e62b00bf05cd5a4343ea513
-{% endhighlight %}
-Now check out their sizes:
-
-{% highlight bash %}
-$ sudo du -sh /var/lib/docker/containers/*
-
-32K  /var/lib/docker/containers/1a174fc216cccf18ec7d4fe14e008e30130b11ede0f0f94a87982e310cf2e765
-32K  /var/lib/docker/containers/1e7264576d78a3134fbaf7829bc24b1d96017cf2bc046b7cd8b08b5775c33d0c
-32K  /var/lib/docker/containers/38fa94212a419a082e6a6b87a8e2ec4a44dd327d7069b85892a707e3fc818544
-32K  /var/lib/docker/containers/c36785c423ec7e0422b2af7364a7ba4da6146cbba7981a0951fcc3fa0430c409
-32K  /var/lib/docker/containers/dcad7101795e4206e637d9358a818e5c32e13b349e62b00bf05cd5a4343ea513
-{% endhighlight %}
-Each of these containers only takes up 32k of space on the filesystem.
-
-Not only does copy-on-write save space, but it also reduces start-up time. When you start a container (or multiple containers from the same image), Docker only needs to create the thin writable container layer.
-
-If Docker had to make an entire copy of the underlying image stack each time it started a new container, container start times and disk space used would be significantly increased. This would be similar to the way that virtual machines work, with one or more virtual disks per virtual machine.
+Docker 가 새 컨테이너를 시작할 때마다 기본 이미지 스택의 전체 복사본을 만들어야하는 경우 컨테이너 시작 시간과 사용 된 디스크 공간이 크게 늘어납니다.
+이는 가상 시스템이 작동하는 방식과 유사하며 가상 시스템마다 하나 이상의 가상 디스크가 있습니다.
 
 ### Reference  
 [docker-storage-driver]
