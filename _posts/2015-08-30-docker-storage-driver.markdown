@@ -71,21 +71,28 @@ Docker 는 Storage driver 를 사용하여 image layer 들과 writable container
 
 모든 실행 중인 container 들의 총 disk 사용량은 각 container 의 크기와 virtual size 값들의 일부 조합입니다.
 
-만일 여러 container 들이 동일한 이미지로부터 시작되었다면, 이 container 들의 디스크 total size 는 `container 들의 size + one imase size (virtual size-size)` 이다.    
+만일 여러 container 들이 동일한 이미지로부터 시작되었다면, 이 container 들의 디스크 total size 는 `container 들의 size + one image size (virtual size-size)` 이다.
+    
+위의 계산 공식은 컨테이너가 디스크 공간을 차지할 수 있는 다음과 같은 추가 방법을 계산하지 않았습니다:
 
-This also does not count the following additional ways a container can take up disk space:
-
-Disk space used for log files if you use the json-file logging driver. This can be non-trivial if your container generates a large amount of logging data and log rotation is not configured.
-Volumes and bind mounts used by the container.
-Disk space used for the container’s configuration files, which are typically small.
-Memory written to disk (if swapping is enabled).
-Checkpoints, if you’re using the experimental checkpoint/restore feature.
+<ul>
+  <li>json-file logging driver 를 사용하는 경우 로그 파일에 사용되는 디스크 공간. Container 가 대량의 로깅 데이터를 생성하고 로그 로테이션이 구성되어 있지 않으면 이 작업이 중요하지 않을 수 있습니다.</li>
+  <li>Container 가 사용하는 Volume 및 Mount.</li>
+  <li>일반적으로 크기가 작은 container 구성 파일에 사용되는 디스크 공간.</li>
+  <li>디스크에 기록 된 메모리 ( swapping 이 활성화 된 경우).</li>
+  <li>실험적인 Checkpoints/restore 기능을 사용하는 경우.</li>
+</ul>
 
 ### The copy-on-write (CoW) strategy
-Copy-on-write is a strategy of sharing and copying files for maximum efficiency. If a file or directory exists in a lower layer within the image, and another layer (including the writable layer) needs read access to it, it just uses the existing file. The first time another layer needs to modify the file (when building the image or running the container), the file is copied into that layer and modified. This minimizes I/O and the size of each of the subsequent layers. These advantages are explained in more depth below.
+copy-on-write 는 파일을 공유하고 복사하여 최대한의 효율성을 높이는 전략입니다.
+파일 또는 디렉토리가 이미지의 하위 레이어에 존재하고 다른 레이어 (쓰기 가능한 레이어 포함)에 읽기 액세스가 필요한 경우 기존 파일을 사용합니다.
+처음으로 다른 레이어가 파일을 수정해야 할 때 (이미지를 만들거나 컨테이너를 실행할 때) 파일은 해당 레이어에 복사되고 수정됩니다.
+이렇게하면 I/O 및 각 후속 레이어의 크기가 최소화됩니다.
+이러한 장점은 아래에서 더 자세히 설명됩니다.
 
-Sharing promotes smaller images
-When you use docker pull to pull down an image from a repository, or when you create a container from an image that does not yet exist locally, each layer is pulled down separately, and stored in Docker’s local storage area, which is usually /var/lib/docker/ on Linux hosts. You can see these layers being pulled in this example:
+공유로 인하여 더 작은 이미지를 만들 수 있게 됩니다.
+docker pull 을 사용하여 저장소에서 이미지를 다운받거나 아직 로컬에 존재하지 않는 이미지에서 컨테이너를 만들 때 각 레이어가 별도로 Docker 의 로컬 저장 영역에 저장됩니다 (일반적으로 /var/lib/docker). 
+다음 예제에서 이러한 레이어가 표시되는지 확인할 수 있습니다.
 {% highlight bash %}
 $ docker pull ubuntu:15.04
 
@@ -97,100 +104,128 @@ a3ed95caeb02: Pull complete
 Digest: sha256:5e279a9df07990286cce22e1b0f5b0490629ca6d187698746ae5e28e604a640e
 Status: Downloaded newer image for ubuntu:15.04
 {% endhighlight %}
-Each of these layers is stored in its own directory inside the Docker host’s local storage area. To examine the layers on the filesystem, list the contents of /var/lib/docker/<storage-driver>/layers/. This example uses aufs, which is the default storage driver:
+이 layer 들 각각은 Docker 호스트의 로컬 스토리지 영역 내부의 자체 디렉토리에 저장됩니다.
+파일 시스템의 레이어를 검사하려면 /var/lib/docker/\<storage-driver>/layers/의 내용을 나열하십시오.
+이 예제에서는 default storage driver 인 aufs 를 사용합니다.
 
+{% highlight bash %}
 $ ls /var/lib/docker/aufs/layers
 1d6674ff835b10f76e354806e16b950f91a191d3b471236609ab13a930275e24
 5dbb0cbe0148cf447b9464a358c1587be586058d9a4c9ce079320265e2bb94e7
 bef7199f2ed8e86fa4ada1309cfad3089e0542fec8894690529e4c04a7ca2d73
 ebf814eccfe98f2704660ca1d844e4348db3b5ccc637eb905d4818fbfb00a06a
 The directory names do not correspond to the layer IDs (this has been true since Docker 1.10).
+{% endhighlight %}
 
-Now imagine that you have two different Dockerfiles. You use the first one to create an image called acme/my-base-image:1.0.
+자 이제 두 개의 Dockerfile 이 있다고 상상해보겠습니다. 첫 번째 이미지를 사용하여 acme/my-base-image:1.0 이라는 이미지를 만듭니다.
 
+{% highlight bash %}
 FROM ubuntu:16.10
 COPY . /app
-The second one is based on acme/my-base-image:1.0, but has some additional layers:
+{% endhighlight %}
+두 번째 것은 acme/my-base-image:1.0을 기반으로 하지만 몇 가지 추가 레이어가 있습니다:
 
+{% highlight bash %}
 FROM acme/my-base-image:1.0
 CMD /app/hello.sh
-The second image contains all the layers from the first image, plus a new layer with the CMD instruction, and a read-write container layer. Docker already has all the layers from the first image, so it does not need to pull them again. The two images share any layers they have in common.
-
-If you build images from the two Dockerfiles, you can use docker image ls and docker history commands to verify that the cryptographic IDs of the shared layers are the same.
-
-Make a new directory cow-test/ and change into it.
-
-Within cow-test/, create a new file with the following contents:
-
-#!/bin/sh
-echo "Hello world"
-Save the file, and make it executable:
-
-chmod +x hello.sh
-Copy the contents of the first Dockerfile above into a new file called Dockerfile.base.
-
-Copy the contents of the second Dockerfile above into a new file called Dockerfile.
-
-Within the cow-test/ directory, build the first image. Don’t forget to include the final . in the command. That sets the PATH, which tells Docker where to look for any files that need to be added to the image.
-
-$ docker build -t acme/my-base-image:1.0 -f Dockerfile.base .
-
-Sending build context to Docker daemon  4.096kB
-Step 1/2 : FROM ubuntu:16.10
- ---> 31005225a745
-Step 2/2 : COPY . /app
- ---> Using cache
- ---> bd09118bcef6
-Successfully built bd09118bcef6
-Successfully tagged acme/my-base-image:1.0
-Build the second image.
-
-{% highlight bash %}
-$ docker build -t acme/my-final-image:1.0 -f Dockerfile .
-
-Sending build context to Docker daemon  4.096kB
-Step 1/2 : FROM acme/my-base-image:1.0
- ---> bd09118bcef6
-Step 2/2 : CMD /app/hello.sh
- ---> Running in a07b694759ba
- ---> dbf995fc07ff
- {% endhighlight %}
-Removing intermediate container a07b694759ba
-Successfully built dbf995fc07ff
-Successfully tagged acme/my-final-image:1.0
-Check out the sizes of the images:
-
-$ docker image ls
-
-{% highlight bash %}
-REPOSITORY                         TAG                     IMAGE ID            CREATED             SIZE
-acme/my-final-image                1.0                     dbf995fc07ff        58 seconds ago      103MB
-acme/my-base-image                 1.0                     bd09118bcef6        3 minutes ago       103MB
 {% endhighlight %}
-Check out the layers that comprise each image:
+두 번째 이미지에는 첫 번째 이미지의 모든 레이어와 CMD 명령이 포함 된 새 레이어 및 읽기/쓰기 컨테이너 레이어가 포함됩니다. 
+Docker 는 이미 첫 번째 이미지의 모든 레이어를 가지고 있으므로 다시 가져올 필요가 없습니다. 두 이미지는 공통된 레이어를 공유합니다.
 
-{% highlight bash %}
-$ docker history bd09118bcef6
-IMAGE               CREATED             CREATED BY                                      SIZE                COMMENT
-bd09118bcef6        4 minutes ago       /bin/sh -c #(nop) COPY dir:35a7eb158c1504e...   100B                
-31005225a745        3 months ago        /bin/sh -c #(nop)  CMD ["/bin/bash"]            0B                  
-<missing>           3 months ago        /bin/sh -c mkdir -p /run/systemd && echo '...   7B                  
-<missing>           3 months ago        /bin/sh -c sed -i 's/^#\s*\(deb.*universe\...   2.78kB              
-<missing>           3 months ago        /bin/sh -c rm -rf /var/lib/apt/lists/*          0B                  
-<missing>           3 months ago        /bin/sh -c set -xe   && echo '#!/bin/sh' >...   745B                
-<missing>           3 months ago        /bin/sh -c #(nop) ADD file:eef57983bd66e3a...   103MB      
-$ docker history dbf995fc07ff
+두 Dockerfile 에서 이미지를 빌드하는 경우 docker image ls 및 docker history 명령을 사용하여 공유 레이어의 암호화 ID가 동일한 지 확인할 수 있습니다.
 
-IMAGE               CREATED             CREATED BY                                      SIZE                COMMENT
-dbf995fc07ff        3 minutes ago       /bin/sh -c #(nop)  CMD ["/bin/sh" "-c" "/a...   0B                  
-bd09118bcef6        5 minutes ago       /bin/sh -c #(nop) COPY dir:35a7eb158c1504e...   100B                
-31005225a745        3 months ago        /bin/sh -c #(nop)  CMD ["/bin/bash"]            0B                  
-<missing>           3 months ago        /bin/sh -c mkdir -p /run/systemd && echo '...   7B                  
-<missing>           3 months ago        /bin/sh -c sed -i 's/^#\s*\(deb.*universe\...   2.78kB              
-<missing>           3 months ago        /bin/sh -c rm -rf /var/lib/apt/lists/*          0B                  
-<missing>           3 months ago        /bin/sh -c set -xe   && echo '#!/bin/sh' >...   745B                
-<missing>           3 months ago        /bin/sh -c #(nop) ADD file:eef57983bd66e3a...   103MB  
-{% endhighlight %}
+<ol>
+  <li>새 디렉토리 cow-test/ 를 만들고 그 디렉토리로 변경하십시오.</li>
+  <li>
+  cow-test/ 에서 다음 내용으로 새 파일을 만듭니다:
+  {% highlight bash %}
+  #!/bin/sh
+  echo "Hello world"
+  {% endhighlight %}
+  </li>
+  <li>
+  파일을 저장하고 실행 가능한 상태로 만듭니다:
+  {% highlight bash %}
+  $ chmod +x hello.sh
+  {% endhighlight %}
+  </li>
+  <li>
+  위의 첫 번째 Dockerfile 의 내용을 Dockerfile.base 라는 새 파일에 복사합니다.
+  </li>
+  <li>
+  위의 두 번째 Dockerfile 의 내용을 Dockerfile 이라는 새 파일에 복사합니다.
+  </li>
+  <li>
+  cow-test/ 디렉토리 내에서 첫 번째 이미지를 빌드하십시오. 
+  Command 를 포함하는 것을 잊지 마십시오. 
+  Docker 가 이미지에 추가해야 할 파일을 찾을 위치를 알려주는 PATH 가 설정됩니다.
+  {% highlight bash %}
+  $ docker build -t acme/my-base-image:1.0 -f Dockerfile.base .
+  
+  Sending build context to Docker daemon  4.096kB
+  Step 1/2 : FROM ubuntu:16.10
+   ---> 31005225a745
+  Step 2/2 : COPY . /app
+   ---> Using cache
+   ---> bd09118bcef6
+  Successfully built bd09118bcef6
+  Successfully tagged acme/my-base-image:1.0
+  {% endhighlight %}
+  </li>
+  <li>
+  두 번째 이미지를 빌드합니다.
+  {% highlight bash %}
+  $ docker build -t acme/my-final-image:1.0 -f Dockerfile .
+  
+  Sending build context to Docker daemon  4.096kB
+  Step 1/2 : FROM acme/my-base-image:1.0
+   ---> bd09118bcef6
+  Step 2/2 : CMD /app/hello.sh
+   ---> Running in a07b694759ba
+   ---> dbf995fc07ff
+  {% endhighlight %}  
+  </li>
+  <li>
+  Removing intermediate container a07b694759ba
+  Successfully built dbf995fc07ff
+  Successfully tagged acme/my-final-image:1.0
+  Check out the sizes of the images:
+  {% highlight bash %}
+  $ docker image ls
+  
+  REPOSITORY                         TAG                     IMAGE ID            CREATED             SIZE
+  acme/my-final-image                1.0                     dbf995fc07ff        58 seconds ago      103MB
+  acme/my-base-image                 1.0                     bd09118bcef6        3 minutes ago       103MB
+  {% endhighlight %}
+  </li>
+  <li>
+  Check out the layers that comprise each image:
+  
+  {% highlight bash %}
+  $ docker history bd09118bcef6
+  IMAGE               CREATED             CREATED BY                                      SIZE                COMMENT
+  bd09118bcef6        4 minutes ago       /bin/sh -c #(nop) COPY dir:35a7eb158c1504e...   100B                
+  31005225a745        3 months ago        /bin/sh -c #(nop)  CMD ["/bin/bash"]            0B                  
+  <missing>           3 months ago        /bin/sh -c mkdir -p /run/systemd && echo '...   7B                  
+  <missing>           3 months ago        /bin/sh -c sed -i 's/^#\s*\(deb.*universe\...   2.78kB              
+  <missing>           3 months ago        /bin/sh -c rm -rf /var/lib/apt/lists/*          0B                  
+  <missing>           3 months ago        /bin/sh -c set -xe   && echo '#!/bin/sh' >...   745B                
+  <missing>           3 months ago        /bin/sh -c #(nop) ADD file:eef57983bd66e3a...   103MB      
+  
+  $ docker history dbf995fc07ff
+  IMAGE               CREATED             CREATED BY                                      SIZE                COMMENT
+  dbf995fc07ff        3 minutes ago       /bin/sh -c #(nop)  CMD ["/bin/sh" "-c" "/a...   0B                  
+  bd09118bcef6        5 minutes ago       /bin/sh -c #(nop) COPY dir:35a7eb158c1504e...   100B                
+  31005225a745        3 months ago        /bin/sh -c #(nop)  CMD ["/bin/bash"]            0B                  
+  <missing>           3 months ago        /bin/sh -c mkdir -p /run/systemd && echo '...   7B                  
+  <missing>           3 months ago        /bin/sh -c sed -i 's/^#\s*\(deb.*universe\...   2.78kB              
+  <missing>           3 months ago        /bin/sh -c rm -rf /var/lib/apt/lists/*          0B                  
+  <missing>           3 months ago        /bin/sh -c set -xe   && echo '#!/bin/sh' >...   745B                
+  <missing>           3 months ago        /bin/sh -c #(nop) ADD file:eef57983bd66e3a...   103MB  
+  {% endhighlight %}
+  </li>
+</ol>
+
 Notice that all the layers are identical except the top layer of the second image. All the other layers are shared between the two images, and are only stored once in /var/lib/docker/. The new layer actually doesn’t take any room at all, because it is not changing any files, but only running a command.
 
 Note: The <missing> lines in the docker history output indicate that those layers were built on another system and are not available locally. This can be ignored.
