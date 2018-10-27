@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "Redis transactions"
+title:  "Redis transactions (번역)"
 date:   2018-10-27 20:00:00
 author: Dark
 categories: Redis
@@ -25,13 +25,16 @@ Redis 에서 `MULTI, EXEC, DISCARD, WATCH` 는 Transaction 의 기반이 되는 
 version 2.2 부터 Redis 는 `check-and-set (CAS)` 작업과 아주 유사한 방법으로 optimistic locking 방식을 위에서 언급한 두 가지 외에도 보장한다. 이에 대한 자세한 내용은 페이지의 하단에 설명되어 있다.
 
 ### Usage
-A Redis transaction is entered using the MULTI command. The command always replies with OK. At this point the user can issue multiple commands. Instead of executing these commands, Redis will queue them. All the commands are executed once EXEC is called.
 
-Calling DISCARD instead will flush the transaction queue and will exit the transaction.
+Redis 는 `MULTI` Command 를 사용함으로써 Transaction 의 시작을 표현할 수 있다. 이 Command 를 호출하면 Redis 로부터 항상 OK 응답을 전달받는다. 이 시점에서 사용자는 여러 Command 들을 실행할 수 있다.
+이러한 Command 들을 실행하기 이전에, Redis 는 이들을 queue 에 넣는다. 모든 Command 들이 `EXEC` Command 가 호출되는 순간 모두 실행된다.
 
-The following example increments keys foo and bar atomically.
+대신 `DISCARD` Command 를 호출하면 Transaction Queue 가 비워지고 Transaction 이 종료됩니다.
+
+하단의 예제는 key foo 와 bar 의 값을 atomic 하게 증가시킨다.
 
 {% highlight bash %}
+## 정상적인 Transaction 처리
 > MULTI
 OK
 > INCR foo
@@ -41,6 +44,21 @@ QUEUED
 > EXEC
 1) (integer) 1
 2) (integer) 1
+## Transaction 처리 결과 확인
+> GET foo
+"1"
+> GET bar
+"1"
+## DISCARD 를 통해 Transaction 내의 모든 작업들을 Queue 에서 제거
+> MULTI
+OK
+> INCR foo
+QUEUED
+> DISCARD
+OK
+## 값이 바뀌지 않음
+> GET foo
+"1"
 {% endhighlight %}
 As it is possible to see from the session above, EXEC returns an array of replies, where every element is the reply of a single command in the transaction, in the same order the commands were issued.
 
