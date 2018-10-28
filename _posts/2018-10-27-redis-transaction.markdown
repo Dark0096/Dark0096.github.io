@@ -189,13 +189,17 @@ EXEC
 이 잠금 양식은 낙관적 잠금( Optimistic locking )이라고 하며 잠금의 매우 강력한 형태이다. 많은 경우, 여러 클라이언트가 서로 다른 키에 액세스하므로 충돌이 거의 발생하지 않는다. 일반적으로 작업을 반복할 가능성은 낮다.
 
 ## WATCH explained
-So what is WATCH really about? It is a command that will make the EXEC conditional: we are asking Redis to perform the transaction only if none of the WATCHed keys were modified. (But they might be changed by the same client inside the transaction without aborting it. More on this.) Otherwise the transaction is not entered at all. (Note that if you WATCH a volatile key and Redis expires the key after you WATCHed it, EXEC will still work. More on this.)
+`WATCH` 는 어떤 역할을 하는 Command 입니까? 이것은 `EXEC` Command 를 조건부처럼 실행할 수 있게 만드는 Command 이다: `WATCH` 하고 있는 key 의 값이 변경되지 않는다면, Transaction 을 실행하세요. (하지만 Transaction 을 중단하지 않고 동일한 클라이언트가 Transaction 을 변경할 수 있다.) 그렇지 않으면 Transaction 은 전혀 수행되지 않는다. ( TTL 이 설정된 key 에 대해 WATCH 를 한 경우, expire 이후에도 EXEC 는 계속 작동한다. )
 
-WATCH can be called multiple times. Simply all the WATCH calls will have the effects to watch for changes starting from the call, up to the moment EXEC is called. You can also send any number of keys to a single WATCH call.
+`WATCH`는 여러 번 요청할 수 있다. 간단히 모든 `WATCH` 요청은 `EXEC` 가 요청되는 순간까지 `WATCH` 호출에서 시작하여 변경 사항을 감시하는 효과를 갖는다. 하나의 `WATCH` 에 여러 개의 키를 보낼 수도 있다. (WATCH key1 key2 ...)
 
-When EXEC is called, all keys are UNWATCHed, regardless of whether the transaction was aborted or not. Also when a client connection is closed, everything gets UNWATCHed.
+`EXEC`가 호출되면 트랜잭션이 중단되었는지 여부에 관계없이 모든 키가 `UNWATCH` 가 된다. 또한 Client connection 이 닫히면 모든 키가 `UNWATCH`가 된다.
+모든 `WATCH` 된 키를 해제하기 위해 인수없이 `UNWATCH` 명령을 사용할 수도 있습니다.
 
-It is also possible to use the UNWATCH command (without arguments) in order to flush all the watched keys. Sometimes this is useful as we optimistically lock a few keys, since possibly we need to perform a transaction to alter those keys, but after reading the current content of the keys we don't want to proceed. When this happens we just call UNWATCH so that the connection can already be used freely for new transactions.
+경우에 따라서는 몇몇 키의 값을 변경하기 위해 Transaction 을 수행해야할 수도 있기 때문에 낙관적이게 Lock 을 잡는 것은 유용하다. 키의 현재 값을 읽은 후에 더이상 `WATCH` 기능을 사용하고 싶지 않은 경우가 발생할 수 있다.
+이런 일이 발생하면 `UNWATCH`를 호출하여 새로운 트랜잭션을 위해 연결을 자유롭게 사용할 수 있다.
+
+Sometimes this is useful as we optimistically lock a few keys, since possibly we need to perform a transaction to alter those keys, but after reading the current content of the keys we don't want to proceed.
 
 ### Using WATCH to implement ZPOP
 Redis 가 지원하지 않는 새로운 Atomic 연산을 생성하는 데 WATCH 를 사용하는 방법을 보여주는 좋은 예는 ZPOP 를 구현하는 것이다. ZPOP 은 정렬된 집합의 더 낮은 점수로 Atomic 방식으로 요소를 팝하는 명령이다. 이것은 가장 간단한 구현이다.
@@ -210,11 +214,11 @@ EXEC
 `EXEC` 가 실패하면 (즉 Null 응답을 반환) 작업을 반복합니다.
 
 ### Redis scripting and transactions
-A Redis script is transactional by definition, so everything you can do with a Redis transaction, you can also do with a script, and usually the script will be both simpler and faster.
+Redis script 는 정의상 Transaction 방식이므로 Redis Transaction 으로 수행 할 수 있는 모든 작업을 Script 로 수행 할 수 있다. 일반적으로 Script 는 더 간단하고 빠릅니다.
 
-This duplication is due to the fact that scripting was introduced in Redis 2.6 while transactions already existed long before. However we are unlikely to remove the support for transactions in the short time because it seems semantically opportune that even without resorting to Redis scripting it is still possible to avoid race conditions, especially since the implementation complexity of Redis transactions is minimal.
+이 중복( Script 와 Transaction ) 은 이전에 Transaction 이 존재하였고, Scripting 이 Redis 2.6 에서 도입되었기 때문에 어쩔 수 없이 발생하게 되었다. 그러나 우리는 짧은 시간안에 Transaction 지원을 제거하지는 않을 것이다. Redis Scripting 을 사용하지 않고도 경쟁 조건을 피하는 것이 여전히 가능하며 Scripting 을 이용하는 것보다 Transaction 을 이용하는 것이 복잡성이 최소화되기 때문이다.
 
-However it is not impossible that in a non immediate future we'll see that the whole user base is just using scripts. If this happens we may deprecate and finally remove transactions.
+하지만, 가까운 시일 내에 모든 Redis 유저들이 Scripting 을 기반으로 Race condition 문제를 해결하고 있음을 확인하는 순간 우리는 Transaction 기능을 제거할 수도 있다.
 
 
 ### Reference
