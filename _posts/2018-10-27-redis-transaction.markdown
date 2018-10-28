@@ -7,7 +7,7 @@ categories: Redis
 tags: redis
 ---
 
-### Transactions
+## Transactions
 Redis 에서 `MULTI, EXEC, DISCARD, WATCH` 는 Transaction 의 기반이 되는 Command 들이다. 이들은 한 단계로 Command 들을 그룹 단위로 실행할 수 있으며, 두 가지의 중요한 점들을 보장한다:
 
 <ol>
@@ -60,67 +60,88 @@ OK
 > GET foo
 "1"
 {% endhighlight %}
-As it is possible to see from the session above, EXEC returns an array of replies, where every element is the reply of a single command in the transaction, in the same order the commands were issued.
 
-When a Redis connection is in the context of a MULTI request, all commands will reply with the string QUEUED (sent as a Status Reply from the point of view of the Redis protocol). A queued command is simply scheduled for execution when EXEC is called.
+위의 Session 에서 볼 수 있듯이 `EXEC` Command 의 응답은 배열 형태로 오게 된다. 각각의 응답은 Transaction 내에 하나의 Command 의 응답과 같다. 이 응답의 순서는 Transaction Command 의 순서와 동일하다.
+
+`MULTI` Command 이후 모든 Command 들은 `QUEUED` string 응답 값을 반환하게 된다. ( Redis 프로토콜의 관점에서 상태 응답으로 전송 됨 )
+
+`EXEC` Command 가 호출되면 Queue 에 존재하던 Transaction Command 들은 실행되도록 예약된다.
 
 ### Errors inside a transaction
-During a transaction it is possible to encounter two kind of command errors:
+Transaction 중에 두 종류의 Command 오류가 발생할 수 있다:
 
-A command may fail to be queued, so there may be an error before EXEC is called. For instance the command may be syntactically wrong (wrong number of arguments, wrong command name, ...), or there may be some critical condition like an out of memory condition (if the server is configured to have a memory limit using the maxmemory directive).
-A command may fail after EXEC is called, for instance since we performed an operation against a key with the wrong value (like calling a list operation against a string value).
-Clients used to sense the first kind of errors, happening before the EXEC call, by checking the return value of the queued command: if the command replies with QUEUED it was queued correctly, otherwise Redis returns an error. If there is an error while queueing a command, most clients will abort the transaction discarding it.
+<ol>
+    <li>
+    `EXEC` Command 를 실행하기 이전에 Queue 에 적재하는 도중 실패하는 경우가 있다.
+    실패하는 경우는 Command 가 문법적으로 잘못된 경우 ( wrong number of arguments, wrong command name, ... ) 또는 메모리 부족과 같은 심각한 상태인 경우( Redis server 가 `maxmemory` 지시자를 사용하여 memory limit 설정이 된 경우 ) 에 발생할 수 있다.
+    </li>
+    <li>
+    `EXEC` Command 를 실행한 이후에 실패하는 경우가 있다.
+    잘못된 명령어 ( string value 에 list 에게만 실행할 수 있는 명령을 호출한 경우 ) 를 호출한 경우에 발생할 수 있다.
+    </li>
+</ol>
 
-However starting with Redis 2.6.5, the server will remember that there was an error during the accumulation of commands, and will refuse to execute the transaction returning also an error during EXEC, and discarding the transaction automatically.
+Client 들은 `EXEC` Command 를 호출하기 이전에 queued command 의 응답 값을 확인함으로써 첫번째 종류의 에러들을 감지할 수 있다:
+Command 의 응답 값으로 `QUEUED` 가 온 경우에는 성공적으로 처리되었다고 보면 된다. 그렇지 않은 경우에는 Error 를 응답 값으로 받게 된다. Transaction Command 를 Redis Server 의 Queue 에 적재하는 동안에 에러가 발생하게 되면 대부분의 Client 들은 `DISCARD` Command 를 통해 Transaction Command 들을 모두 중단할 수 있다.
 
-Before Redis 2.6.5 the behavior was to execute the transaction with just the subset of commands queued successfully in case the client called EXEC regardless of previous errors. The new behavior makes it much more simple to mix transactions with pipelining, so that the whole transaction can be sent at once, reading all the replies later at once.
+하지만, Redis 2.6.5 이후부터는 Server 에서 명령이 누적되는 동안 오류가 있음을 기억한다. 이는 `EXEC` 실행시 Transaction 을 거부한다는 오류를 반환하고 자동으로 `DISCARD` 처리한다.
 
-Errors happening after EXEC instead are not handled in a special way: all the other commands will be executed even if some command fails during the transaction.
+Redis 2.6.5 이전에는 Client 가 오류 응답에 관계없이 `EXEC` 호출한 경우에는 Transaction 내의 Command 들 중 성공적으로 처리할 수 있는 일부분의 Command 만 실행되었다. 새로운 동작으로 인해 Transaction 을 파이프라인과 섞는 것이 훨씬 간단해 졌기 때문에 전체 트랜잭션을 한꺼번에 보내고 나중에 모든 응답을 한 번에 읽을 수 있다.
 
-This is more clear on the protocol level. In the following example one command will fail when executed even if the syntax is right:
+`EXEC` 이후 발생한 오류는 특별한 방법으로 처리되지 않습니다. 트랜잭션 중에 일부 명령이 실패하더라도 다른 모든 명령들이 실행됩니다.
+
+이것은 프로토콜 수준에서 더 명확하다. 다음 예제에서는 구문이 올바르더라도 실행될 때 한 명령이 실패한다:
 
 {% highlight bash %}
-Trying 127.0.0.1...
-Connected to localhost.
-Escape character is '^]'.
-MULTI
+### Start transaction
+> MULTI
 +OK
-SET a 3
-abc
+> SET a 5
 +QUEUED
-LPOP a
+> GET a
 +QUEUED
-EXEC
-*2
-+OK
+### Wrong command ( only use to list type )
+> LPOP a
++QUEUED
+> SET a 4
++QUEUED
+> GET a
++QUEUED
+### End transaction
+> EXEC
+1) OK
+2) "5"
+3) (error) WRONGTYPE Operation against a key holding the wrong kind of value
+4) OK
+5) "4"
 {% endhighlight %}
 
--ERR Operation against a key holding the wrong kind of value
-EXEC returned two-element Bulk string reply where one is an OK code and the other an -ERR reply. It's up to the client library to find a sensible way to provide the error to the user.
+`명령이 실패하더라도 Queue 의 다른 모든 명령이 처리된다. Redis 는 명령 처리를 중단하지 않는다.`
 
-It's important to note that even when a command fails, all the other commands in the queue are processed – Redis will not stop the processing of commands.
-
-Another example, again using the wire protocol with telnet, shows how syntax errors are reported ASAP instead:
+telnet과 함께 유선 프로토콜을 다시 사용하는 또 다른 예는 구문 오류가 최대한 빨리보고되는 방법을 보여준다.
 
 {% highlight bash %}
 MULTI
 +OK
 INCR a b c
-{% endhighlight %}
 -ERR wrong number of arguments for 'incr' command
-This time due to the syntax error the bad INCR command is not queued at all.
+{% endhighlight %}
+
+이번에는 잘못된 INCR 명령이 구문 오류로 인해 Redis queue 에 저장되지 않는다.
 
 ### Why Redis does not support roll backs?
-If you have a relational databases background, the fact that Redis commands can fail during a transaction, but still Redis will execute the rest of the transaction instead of rolling back, may look odd to you.
+Relational 데이터베이스에 대한 배경 지식이 있는 경우, Redis 의 Transaction 처리가 Command 가 일부 실패할 수 있지만 롤백하지 않고 나머지 트랜잭션을 실행한다는 점이 이상해 보일 수 있다.
 
-However there are good opinions for this behavior:
+그러나 이러한 Redis Transaction 처리 방법이 장점이 되기도 한다:
 
-Redis commands can fail only if called with a wrong syntax (and the problem is not detectable during the command queueing), or against keys holding the wrong data type: this means that in practical terms a failing command is the result of a programming errors, and a kind of error that is very likely to be detected during development, and not in production.
-Redis is internally simplified and faster because it does not need the ability to roll back.
-An argument against Redis point of view is that bugs happen, however it should be noted that in general the roll back does not save you from programming errors. For instance if a query increments a key by 2 instead of 1, or increments the wrong key, there is no way for a rollback mechanism to help. Given that no one can save the programmer from his or her errors, and that the kind of errors required for a Redis command to fail are unlikely to enter in production, we selected the simpler and faster approach of not supporting roll backs on errors.
+Redis 명령은 잘못된 구문으로 호출된 경우에만 실패 할 수 있으며 (Queue 에서 문제가 감지되지 않음) 또는 잘못된 데이터 유형에 대한 요청이 실패할 수 있다. 즉, 실패한 명령은 프로그래밍 오류의 결과이며, 대부분 개발 단계에서 발견될 수 있는 종류의 오류이므로 Production 에 발생할 일은 거의 발생하지 않는다.
+Redis 는 rollback 할 필요가 없기 때문에 내부적으로 단순화되고 빨라졌다.
+Redis 의 Transaction 처리에 대한 논쟁은 일반적인 사용자가 이러한 동작 방식을 이해하지 못하고 있을 경우 버그가 발생할 수 있다는 점이지만, 일반적으로 rollback 이 프로그래밍 오류로부터 보호할 수는 없다.
+예를 들어 Command 가 특정 key 를 1에서 2로 증가시키거나 잘못된 key 를 증가시키면 rollback mechanism 이 도움이 되지 않는다.
+누구도 프로그래머의 실수를 막을 수 없으며, Redis 명령이 실패하는 데 필요한 오류의 종류가 프로덕션 환경에 들어가기가 쉽지 않기 때문에 오류에 대한 롤백을 지원하지 않는 보다 간단하고 빠른 방법을 선택했다.
 
 ### Discarding the command queue
-DISCARD can be used in order to abort a transaction. In this case, no commands are executed and the state of the connection is restored to normal.
+`DISCARD` 는 Transaction 을 중단시키기 위해 사용될 수 있다. 이 경우 명령이 실행되지 않고 연결 상태가 정상으로 복원된다.
 
 {% highlight bash %}
 > SET foo 1
@@ -136,13 +157,13 @@ OK
 {% endhighlight %}
 
 ### Optimistic locking using check-and-set
-WATCH is used to provide a check-and-set (CAS) behavior to Redis transactions.
+`WATCH` 는 Redis 트랜잭션에 CAS (Check-and-Set) 동작을 제공하는 데 사용된다.
 
-WATCHed keys are monitored in order to detect changes against them. If at least one watched key is modified before the EXEC command, the whole transaction aborts, and EXEC returns a Null reply to notify that the transaction failed.
+`WATCH` 된 키는 변경 사항을 감지하기 위해 모니터 된다. `EXEC` 명령 전에 하나 이상의 감시 키가 수정되면 전체 트랜잭션이 중단되고 `EXEC` 는 트랜잭션이 실패했음을 알리기 위해 Null 응답을 반환합니다.
 
-For example, imagine we have the need to atomically increment the value of a key by 1 (let's suppose Redis doesn't have INCR).
+예를 들어, 키의 값을 원자적으로 1 씩 증가시킬 필요가 있다고 상상해보자 ( Redis 에는 INCR 이 없다고 가정해 보자 ).
 
-The first try may be the following:
+첫 번째 시도는 다음과 같다.
 
 {% highlight bash %}
 val = GET mykey
@@ -150,9 +171,10 @@ val = val + 1
 SET mykey $val
 {% endhighlight %}
 
-This will work reliably only if we have a single client performing the operation in a given time. If multiple clients try to increment the key at about the same time there will be a race condition. For instance, client A and B will read the old value, for instance, 10. The value will be incremented to 11 by both the clients, and finally SET as the value of the key. So the final value will be 11 instead of 12.
+이것은 주어진 시간에 하나의 클라이언트가 작업을 수행하는 경우에만 안정적으로 작동한다. 여러 클라이언트가 거의 같은 시간에 키를 증가 시키려고하면 race condition 이 발생한다.
+예를 들어 클라이언트 A와 B는 이전 값 (예 : 10)을 읽는다. 이 값은 클라이언트에서 모두 11로 증가하고 마지막으로 키 값으로 SET 된다. 따라서 최종 값은 12 대신 11이 된다.
 
-Thanks to WATCH we are able to model the problem very well:
+`WATCH` 덕분에 우리는 문제를 아주 잘 다룰 수 있게 되었다:
 
 {% highlight bash %}
 WATCH mykey
@@ -162,11 +184,11 @@ MULTI
 SET mykey $val
 EXEC
 {% endhighlight %}
-Using the above code, if there are race conditions and another client modifies the result of val in the time between our call to WATCH and our call to EXEC, the transaction will fail.
+위의 코드를 사용하여 Race condition 이 있고 다른 클라이언트가 WATCH 호출과 EXEC 호출 사이의 시간에 val 결과를 수정하면 Transaction 이 실패한다.
 
-We just have to repeat the operation hoping this time we'll not get a new race. This form of locking is called optimistic locking and is a very powerful form of locking. In many use cases, multiple clients will be accessing different keys, so collisions are unlikely – usually there's no need to repeat the operation.
+이 잠금 양식은 낙관적 잠금( Optimistic locking )이라고 하며 잠금의 매우 강력한 형태이다. 많은 경우, 여러 클라이언트가 서로 다른 키에 액세스하므로 충돌이 거의 발생하지 않는다. 일반적으로 작업을 반복할 가능성은 낮다.
 
-### WATCH explained
+## WATCH explained
 So what is WATCH really about? It is a command that will make the EXEC conditional: we are asking Redis to perform the transaction only if none of the WATCHed keys were modified. (But they might be changed by the same client inside the transaction without aborting it. More on this.) Otherwise the transaction is not entered at all. (Note that if you WATCH a volatile key and Redis expires the key after you WATCHed it, EXEC will still work. More on this.)
 
 WATCH can be called multiple times. Simply all the WATCH calls will have the effects to watch for changes starting from the call, up to the moment EXEC is called. You can also send any number of keys to a single WATCH call.
@@ -175,8 +197,8 @@ When EXEC is called, all keys are UNWATCHed, regardless of whether the transacti
 
 It is also possible to use the UNWATCH command (without arguments) in order to flush all the watched keys. Sometimes this is useful as we optimistically lock a few keys, since possibly we need to perform a transaction to alter those keys, but after reading the current content of the keys we don't want to proceed. When this happens we just call UNWATCH so that the connection can already be used freely for new transactions.
 
-Using WATCH to implement ZPOP
-A good example to illustrate how WATCH can be used to create new atomic operations otherwise not supported by Redis is to implement ZPOP, that is a command that pops the element with the lower score from a sorted set in an atomic way. This is the simplest implementation:
+### Using WATCH to implement ZPOP
+Redis 가 지원하지 않는 새로운 Atomic 연산을 생성하는 데 WATCH 를 사용하는 방법을 보여주는 좋은 예는 ZPOP 를 구현하는 것이다. ZPOP 은 정렬된 집합의 더 낮은 점수로 Atomic 방식으로 요소를 팝하는 명령이다. 이것은 가장 간단한 구현이다.
 
 {% highlight bash %}
 WATCH zset
@@ -185,7 +207,7 @@ MULTI
 ZREM zset element
 EXEC
 {% endhighlight %}
-If EXEC fails (i.e. returns a Null reply) we just repeat the operation.
+`EXEC` 가 실패하면 (즉 Null 응답을 반환) 작업을 반복합니다.
 
 ### Redis scripting and transactions
 A Redis script is transactional by definition, so everything you can do with a Redis transaction, you can also do with a script, and usually the script will be both simpler and faster.
