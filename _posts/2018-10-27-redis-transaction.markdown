@@ -199,8 +199,6 @@ EXEC
 경우에 따라서는 몇몇 키의 값을 변경하기 위해 Transaction 을 수행해야할 수도 있기 때문에 낙관적이게 Lock 을 잡는 것은 유용하다. 키의 현재 값을 읽은 후에 더이상 `WATCH` 기능을 사용하고 싶지 않은 경우가 발생할 수 있다.
 이런 일이 발생하면 `UNWATCH`를 호출하여 새로운 트랜잭션을 위해 연결을 자유롭게 사용할 수 있다.
 
-Sometimes this is useful as we optimistically lock a few keys, since possibly we need to perform a transaction to alter those keys, but after reading the current content of the keys we don't want to proceed.
-
 ### Using WATCH to implement ZPOP
 Redis 가 지원하지 않는 새로운 Atomic 연산을 생성하는 데 WATCH 를 사용하는 방법을 보여주는 좋은 예는 ZPOP 를 구현하는 것이다. ZPOP 은 정렬된 집합의 더 낮은 점수로 Atomic 방식으로 요소를 팝하는 명령이다. 이것은 가장 간단한 구현이다.
 
@@ -211,10 +209,10 @@ MULTI
 ZREM zset element
 EXEC
 {% endhighlight %}
-`EXEC` 가 실패하면 (즉 Null 응답을 반환) 작업을 반복합니다.
+`EXEC` 가 실패하면 (즉 Null 응답을 반환) 작업을 반복한다.
 
 ### Redis scripting and transactions
-Redis script 는 정의상 Transaction 방식이므로 Redis Transaction 으로 수행 할 수 있는 모든 작업을 Script 로 수행 할 수 있다. 일반적으로 Script 는 더 간단하고 빠릅니다.
+Redis script 는 정의상 Transaction 방식이므로 Redis Transaction 으로 수행 할 수 있는 모든 작업을 Script 로 수행 할 수 있다. 일반적으로 Script 는 더 간단하고 빠르다.
 
 이 중복( Script 와 Transaction ) 은 이전에 Transaction 이 존재하였고, Scripting 이 Redis 2.6 에서 도입되었기 때문에 어쩔 수 없이 발생하게 되었다. 그러나 우리는 짧은 시간안에 Transaction 지원을 제거하지는 않을 것이다. Redis Scripting 을 사용하지 않고도 경쟁 조건을 피하는 것이 여전히 가능하며 Scripting 을 이용하는 것보다 Transaction 을 이용하는 것이 복잡성이 최소화되기 때문이다.
 
