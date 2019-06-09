@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "[WIP] kops state store"
+title:  "kops state store"
 date:   2018-11-30 01:00:00
 author: Dark
 categories: kubernetes kops
