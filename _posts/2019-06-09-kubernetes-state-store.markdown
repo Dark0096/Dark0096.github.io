@@ -55,19 +55,19 @@ state store 를 다른 s3 bucket 으로 쉽게 이동시킬 수 있습니다. Si
     <li>${OLD_KOPS_STATE_STORE}/${CLUSTER_NAME} 에서 이동시키고자 하는 새로운 state store ( ${NEW_KOPS_STATE_STORE}/${CLUSTER_NAME} ) 로 하위의 모든 파일들을 이동시키빈다. 이때에는 aws s3 sync 나 기타 유사한 tool 을 이용하여 이동시킵니다.</li>
     <li>KOPS_STATE_STORE 환경 변수를 새로운 S3 bucket 을 바라보도록 업데이트합니다.</li>
     <li>`kops edit cluster ${CLUSTER_NAME}` 또는 cluster manifest yaml file 을 직접 수정합니다. 그리고, NEW_KOPS_STATE_STORE 을 보고 있는 .spec.configBase 을 업데이트하세요.</li>
-    <li>이제 `kops update cluster ${CLUSTER_NAME} --yes` 울 실행하여 변경된 클러스터 정보를 반영할 수 있습니다. 새롭게 생성된 노드들은 새로 설정한 NEW_KOPS_STATE_STORE bucket 으로부터 의존성이 있는 파일들을 찾아오게 될 것입니다. 이제 기존의 bucket 의 파일들은 안전하게 제거해도 됩니다.</li>
+    <li>이제 `kops update cluster ${CLUSTER_NAME} --yes`  실행하여 변경된 클러스터 정보를 반영할 수 있습니다. 새롭게 생성된 노드들은 새로 설정한 NEW_KOPS_STATE_STORE bucket 으로부터 의존성이 있는 파일들을 찾아오게 될 것입니다. 이제 기존의 bucket 의 파일들은 안전하게 제거해도 됩니다.</li>
     <li>이전하고자 하는 cluster 들은 모두 위와 같은 방법으로 이동시킵니다.</li>
 </ol>
 
 # State store configuration
 state store 를 설정하는데에는 여러 가지 방법이 존재합니다. 설정이 적용되는 데에는 우선순위가 존재하며 이는 아래와 같습니다:
 
-command line argument --state s3://yourstatestore
-environment variable export KOPS_STATE_STORE=s3://yourstatestore
-config file $HOME/.kops.yaml
-config file $HOME/.kops/config
+command line argument --state s3://yourstatestore  
+environment variable export KOPS_STATE_STORE=s3://yourstatestore  
+config file $HOME/.kops.yaml  
+config file $HOME/.kops/config  
 
-Configuration file example:
+Configuration file example:  
 $HOME/.kops/config might look like this:
 
 ```
