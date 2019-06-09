@@ -13,7 +13,7 @@ tags: kubernetes kops
 
 kops 에는 state store 라는 개념이 존재합니다. 이곳에는 저희들이 kops 를 이용하여 생성한 cluster 의 설정 정보가 저장됩니다. 
 이 state 값을 기반으로 최초 클러스터를 생성할 때 뿐만 아니라, 운영중인 kubernetes cluster 를 재구성할 수 있습니다.
-state store 는 kops 의 VFS 구현을 사용하여 이와 관련된 곳에는 어디든 저장할 수 있습니다. 다음의 state store 들은 지원되고 있는 시스템들을 나타냅니다:
+kops 는 내부적으로 VFS 를 사용하여 state store 를 저장하도록 구현되어 있습니다. 이는 File system 을 abstraction 한 것으로 다양한 구현체를 통하여 여러 File system 을 사용할 수 있습니다. 다음의 state store 들은 지원되고 있는 시스템들을 나타냅니다:
 
 <ul>
     <li>Amazon AWS S3 (s3://)</li>
@@ -37,7 +37,7 @@ state store 에서 가장 중요한 파일 중 하나는 config file 입니다. 
 $ kops create cluster --node-size=m4.large
 {% endhighlight %}
 
-예를 들어, node size 를 m4.large 로 option 을 주었기 때문에 실제로 state store configuration 에는 아래와 같은 한 줄이 추가될 것입니다.
+위와 같은 command 를 실행할 경우 node size 를 m4.large 로 option 을 주었기 때문에 state store configuration 에는 아래와 같은 한 줄이 추가될 것입니다.
 {% highlight bash %}
 NodeMachineType: m4.large
 {% endhighlight %}
