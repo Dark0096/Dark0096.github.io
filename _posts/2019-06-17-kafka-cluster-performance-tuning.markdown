@@ -56,14 +56,11 @@ limit as unlimited unlimited
 
 `cat /proc/2238/limits`
 
-https://linux.die.net/man/2/setrlimit
-
-
-
-
 ### Reference
 [Setting ulimits for docker process and containers in Ubuntu]  
 [Kafka performance tuning guide]
+[ulimit]
 
 [Setting ulimits for docker process and containers in Ubuntu]:      http://tostr.pl/blog/setting-ulimits-for-docker-process-2/
 [Kafka performance tuning guide]:                                   https://kafka.apache.org/documentation/#hwandos
+[ulimit] https://linux.die.net/man/2/setrlimit
