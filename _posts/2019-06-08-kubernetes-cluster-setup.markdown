@@ -47,24 +47,31 @@ $ aws s3api create-bucket --bucket kubernetes-dark-cluster --region ap-northeast
 $ aws s3api put-bucket-versioning --bucket kubernetes-dark-cluster --versioning-configuration Status=Enabled
 ```
 
+kops 에서 state store 의 의미가 무엇인지 파악하고 싶으신 경우 아래의 블로그 글을 참조해주세요.
+[kops state store란?]
 
-# TODO 확인 필요
-kops 는 Resource 를 생성하고 이에 대한 정보를 파일로 저장하여 diff 를 기반으로 동작합니다. 이때에 파일을 Local 에서 저장할 수 있지만 AWS S3 와 같은 다른 저장소에 저장할 수도 있습니다.
+# kops create cluster
+kops 는 Resource 를 생성하고 이에 대한 정보를 파일로 저장하여 diff 를 기반으로 동작합니다. 
+이때에 파일을 Local 에서 저장할 수 있지만 AWS S3 와 같은 다른 state store 를 이용할 수도 있습니다.
 
 ```
 $ export KOPS_CLUSTER_NAME=imesh.k8s.local
 $ export KOPS_STATE_STORE=s3://kubernetes-dark-cluster
 ```
 
+아래의 Command 를 실행하면 kops 는 stdin 으로 입력된 정보를 기반으로 cluster 를 생성하게 됩니다. 이 정보는 KOPS_STATE_STORE 환경 변수에 지정한 system 에 저장되게 됩니다.  
+ 
 ```
-$ kops create cluster --node-count=1 --node-size=t2.medium --master-size=t2.medium --zones='ap-northeast-2a' --name=imesh.k8s.local
+$ kops create cluster --node-count=1 --node-size=t2.medium --master-size=t2.medium --zones='ap-northeast-2a' --name=$KOPS_CLUSTER_NAME
 ```
+
+구조는 아래와 같습니다.
+<img src="https://raw.githubusercontent.com/Dark0096/Dark0096.github.io/master/assets/post/2019-06-08-kops-state.png" title="IAM Group">
 
 필요한 경우 ssh key 를 생성합니다.
 ```
 $ ssh-keygen -t rsa -b 4096
 ```
-
 
 kops 를 통해 secret key 를 생성합니다.
 
@@ -98,8 +105,10 @@ $ kops get secrets admin --type secret -oplaintext
 ### Reference
 [kops command docs 바로가기]  
 [how to create kubernetes cluster]  
-[kubernetes dashboard]
+[kubernetes dashboard]  
+[kops state store란?]
 
 [kops command docs 바로가기]:              https://github.com/kubernetes/kops/tree/master/docs/cli
 [how to create kubernetes cluster]:      https://medium.com/containermind/how-to-create-a-kubernetes-cluster-on-aws-in-few-minutes-89dda10354f4
 [kubernetes dashboard]:                  https://github.com/kubernetes/dashboard#kubernetes-dashboard
+[kops state store란?]:                   https://dark0096.github.io/kubernetes/kops/2018/11/30/kubernetes-state-store.html
