@@ -1,108 +1,212 @@
 ---
 layout: post
-title:  "elasticsearch indexing"
-date:   2019-08-07 23:00:00
+title:  "3장 데이터 색인, 변경, 삭제"
+date:   2019-08-07 11:00:00
 author: Dark
 categories: elasticsearch
 tags: elasticsearch
 ---
 
-해당 Blog post 는 kops github 의 Doc 을 번역 + 보충 설명을 통하여 state store 를 설명하고 있습니다.
+# 3장 데이터 색인, 변경, 삭제
 
-# State Store
+데이터 색인, 변경과 삭제를 알아보기 이전에 기본적인 Concept 에 대해 이해하는 것이 중요합니다.  
+이번 장에서 살펴볼 내용들에 언급되는 용어들의 이해를 돕기 위해 아래와 같은 테이블을 만들어 보았습니다.        
 
-kops 에는 state store 라는 개념이 존재합니다. 이곳에는 저희들이 kops 를 이용하여 생성한 cluster 의 설정 정보가 저장됩니다. 
-이 state 값을 기반으로 최초 클러스터를 생성할 때 뿐만 아니라, 운영중인 kubernetes cluster 를 재구성할 수 있습니다.
-kops 는 내부적으로 VFS 를 사용하여 state store 를 저장하도록 구현되어 있습니다. 이는 File system 을 abstraction 한 것으로 다양한 구현체를 통하여 여러 File system 을 사용할 수 있습니다. 다음의 state store 들은 지원되고 있는 시스템들을 나타냅니다:
+## Concept
 
-<ul>
-    <li>Amazon AWS S3 (s3://)</li>
-    <li>local filesystem (file://)</li>
-    <li>Digital Ocean (do://)</li>
-    <li>MemFS (memfs://)</li>
-    <li>Google Cloud (gs://)</li>
-    <li>Kubernetes (k8s://)</li>
-    <li>OpenStack Swift (swift://)</li>
-    <li>AliCloud (oss://)</li>
-</ul>
+|   Index   | Type |    Mapping     | Field  | Field Type | Document |
+|-----------|------|----------------|--------|------------|----------|
+| Database  |Table | Schema + Index | Column |  Data Type |    Row   |
 
-이 state store 는 단지 파일들입니다. 이에 따라, git 과 같은 version control system 에서 관리해도 무방합니다.
+- 테이블의 상단은 Elasticsearch 이고, 하단은 RDBMS 용어입니다. 
+- RDBMS 에서 Table 은 Column 들로 이루어져 있고, 개별 Column 들은 특정 Data Type 이 지정되어 있습니다.
+- Elasticsearch 에서 Type 은 Field 들로 이루어져 있고, 개별 Field 들은 특정 Field Type 이 지정되어 있습니다. 
+- RDBMS 에서는 Table 의 Schema 가 무엇인지를 확인하여 Data Type 을 살펴봅니다.
+- Elasticsearch 에서는 Type 의 Mapping 정보가 무엇인지를 확인하여 Field Type 과 어떻게 색인될 수 있는지 정보를 확인합니다.
 
-# {statestore}/config
+## 데이터 색인 ( Data Indexing )
 
-state store 에서 가장 중요한 파일 중 하나는 config file 입니다. 이 파일은 kubernetes cluster 의 주요한 설정 값들 (instance types, zones, etc) 을 저장하고 있습니다. 
-아래와 같이 kops 를 통하여 cluster 를 생성한다는 명령어를 요청한다고 가정해봅시다. 이후에 kops 는 명시한 command 의 옵션들을 기반으로 state store config 내에 그 상태를 저장하게 됩니다. 
+### Mapping
 
-{% highlight bash %}
-$ kops create cluster --node-size=m4.large
-{% endhighlight %}
+Elasticsearch 에서 Mapping 이란 Data 를 어떤 방식으로 Indexing 할 지에 대한 메타 정보를 제공해주는 개념입니다.   
+이에 따라, Field 의 Type 을 정의하고 어떤 Analyzer 를 통해 각 Field 들을 Indexing 할지에 대한 정보가 저장되어 있습니다.   
 
-위와 같은 command 를 실행할 경우 node size 를 m4.large 로 option 을 주었기 때문에 state store configuration 에는 아래와 같은 한 줄이 추가될 것입니다.
-{% highlight bash %}
-NodeMachineType: m4.large
-{% endhighlight %}
+#### Static Mapping
 
-kops command line tool 을 이용할 때에 사용되는 option 들은 사용자들이 좀 더 쉽게 cluster 를 구축할 수 있도록 제공되는 short-cut 이라고 볼 수 있습니다.
-이러한 option 들은 기존의 state store 에 저장된 설정 값에 병합되는 구조로 관리됩니다.
-만일 아직 command line tool 에서 제공되지 않는 option 들을 설정하고 싶거나 text 기반의 설정을 좀 더 선호하신다면, `kops edit cluster` command 를 통하여 직접 수정할 수 있습니다.
-configuration 은 병합되기 때문에 클러스터를 재구성할 때에 변경된 인수를 재지정할 수 있습니다. 예를 들어, dry run 이후에 클러스터를 다시 생성하면 됩니다.
-
-
-# Moving state between S3 buckets
-state store 를 다른 s3 bucket 으로 쉽게 이동시킬 수 있습니다. Single cluster 를 처리하는 방법은 아래와 같습니다:
-
-<ol>
-    <li>${OLD_KOPS_STATE_STORE}/${CLUSTER_NAME} 에서 이동시키고자 하는 새로운 state store ( ${NEW_KOPS_STATE_STORE}/${CLUSTER_NAME} ) 로 하위의 모든 파일들을 이동시키빈다. 이때에는 aws s3 sync 나 기타 유사한 tool 을 이용하여 이동시킵니다.</li>
-    <li>KOPS_STATE_STORE 환경 변수를 새로운 S3 bucket 을 바라보도록 업데이트합니다.</li>
-    <li>`kops edit cluster ${CLUSTER_NAME}` 또는 cluster manifest yaml file 을 직접 수정합니다. 그리고, NEW_KOPS_STATE_STORE 을 보고 있는 .spec.configBase 을 업데이트하세요.</li>
-    <li>이제 `kops update cluster ${CLUSTER_NAME} --yes`  실행하여 변경된 클러스터 정보를 반영할 수 있습니다. 새롭게 생성된 노드들은 새로 설정한 NEW_KOPS_STATE_STORE bucket 으로부터 의존성이 있는 파일들을 찾아오게 될 것입니다. 이제 기존의 bucket 의 파일들은 안전하게 제거해도 됩니다.</li>
-    <li>이전하고자 하는 cluster 들은 모두 위와 같은 방법으로 이동시킵니다.</li>
-</ol>
-
-# State store configuration
-state store 를 설정하는데에는 여러 가지 방법이 존재합니다. 설정이 적용되는 데에는 우선순위가 존재하며 이는 아래와 같습니다:
-
-command line argument --state s3://yourstatestore  
-environment variable export KOPS_STATE_STORE=s3://yourstatestore  
-config file $HOME/.kops.yaml  
-config file $HOME/.kops/config  
-
-Configuration file example:  
-$HOME/.kops/config might look like this:
+Static Mapping 은 Elasticsearch 에게 해당 Type 은 어떤 Data 들이 유입될 예정이고, 이들에 대해서는 미리 정의한 정보를 토대로 Indexing 을 처리하길 원하는 경우에 사용하는 방법입니다.  
+이에 대한 설명을 위하여 실제 색인을 하기에 앞서 Index 와 Document 를 보관할 Type 을 생성해보겠습니다.
 
 ```
-kops_state_store: s3://yourstatestore
+PUT {index}
+PUT get-together
 ```
+- get-together 라는 Index 를 생성하였습니다.
 
-# Cross Account State-store (AWS)
-클러스터를 생성하기 위해 kops 를 실행하는 엔티티가 state store bucket 의 소유자와 동일한 계정에 있지 않은 상황이 있습니다.
-이 경우 권한을 명시적으로 부여해야합니다: 
-`s3:getBucketLocation` - kops를 실행중인 ARN.
-
-다음 정책을 사용하여 Cross account 간의 state store 를 가져와 사용할 수 있습니다:
 ```
+PUT {index}/_mapping/{type}
+PUT get-together/_mapping/new-events
 {
-    "Id": "123",
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "123",
-            "Action": [
-                "s3:GetBucketLocation"
-            ],
-            "Effect": "Allow",
-            "Resource": "arn:aws:s3:::state-store-bucket",
-            "Principal": {
-                "AWS": [
-                    "arn:aws:iam::123456789:user/kopsuser"
-                ]
+    "new-events": {
+        "properties": {
+            "host": {
+                "type": "string" 
             }
         }
+    }
+}
+```
+- get-together 라는 Index 내부에 new-events 라는 Type 을 생성하였습니다. 
+- new-events Type 의 mapping 정보를 설정하였습니다.
+- new-events type 은 host 라는 field 를 가지게 되고 이는 string 이라는 field type 을 갖도록 설정하였습니다.
+
+```
+PUT {index}/{type}/{documentId}
+PUT get-together/new-events/1
+{
+    "host" : "localhost"
+}
+```
+- document 의 id 를 1 로 지정하였습니다.
+- document 의 host field 의 값으로 localhost 를 지정하여 indexing 하였습니다.
+
+#### Dynamic Mapping
+
+Dynamic Mapping 은 Elasticsearch 에게 어떠한 Data 가 유입될지 모르는 경우 사용하는 방법입니다.
+
+```
+PUT {index}/{type}/{documentId}
+PUT dynamic-index/dynamic-type/1
+{
+    "host" : "localhost"
+}
+```
+- document 의 id 를 1 로 지정하였습니다.
+- document 의 host field 의 값으로 localhost 를 지정하여 indexing 하였습니다.
+
+##### Static vs Dynamic Mapping
+```
+PUT dynamic-index/dynamic-type/1
+{
+    "int" : 1
+}
+```
+
+```
+PUT dynamic-index/dynamic-type/2
+{
+    "int" : "localhost"
+}
+```
+- 최초에 추론하여 설정되었던 Field type 이 달라진 경우 Indexing 시 문제가 발생할 수 있다.
+- Document 의 type 이 제대로 관리 되지 않아 불필요한 field 들에 대한 mapping 정보들이 쌓일 수 있다.
+
+### Field
+
+#### Meta Field
+
+#### Field
+
+
+### Indexing
+
+#### analyzed, not_analyzed, no
+
+아래와 같이 Index 의 종류에 따라 어떻게 검색을 하게 되는지 확인하기 위하여 테스트용 Index 와 Type 을 생성해보도록 하겠습니다.
+```
+PUT static-index/_mapping/static-type
+{
+    "static-type": {
+        "properties": {
+            "notAnalyzedText": {
+                "type": "string",
+                "index": "not_analyzed" 
+            },
+            "analyzedText": {
+                "type": "string",
+                "index": "analyzed" 
+            },
+            "no": {
+                "type": "string",
+                "index": "no" 
+            }
+        }
+    }
+}
+```
+
+##### not_analyzed
+
+notAnalyzedText field 에 소문자로 검색을 시도해보도록 하겠습니다.
+```
+POST static-index/static-type/_search
+{
+  "query": {
+    "filtered": {
+      "filter": {
+        "term": {
+          "notAnalyzedText": "localhost"
+        }
+      }
+    }
+  }
+}
+```
+
+```
+{
+  "took": 3,
+  "timed_out": false,
+  "_shards": {
+    "total": 5,
+    "successful": 5,
+    "failed": 0
+  },
+  "hits": {
+    "total": 0,
+    "max_score": null,
+    "hits": [
+
     ]
+  }
+}
+```
+
+##### analyzed
+
+```
+POST static-index/static-type/_search
+{
+  "query": {
+    "filtered": {
+      "filter": {
+        "term": {
+          "analyzedText": "localhost"
+        }
+      }
+    }
+  }
+}
+```
+
+##### no
+```
+POST static-index/static-type/_search
+{
+  "query": {
+    "filtered": {
+      "filter": {
+        "term": {
+          "no": "Localhost"
+        }
+      }
+    }
+  }
 }
 ```
 
 ### Reference
-[kops state store]
+[Elasticsearch In Action]
+[Standard Analyzer]
 
-[kops state store]:      https://github.com/kubernetes/kops/blob/master/docs/state.md
+[Elasticsearch In Action]:      http://www.yes24.com/Product/Goods/33029174?Acode=101
+[Standard Analyzer]:            https://www.elastic.co/guide/en/elasticsearch/reference/current/analysis-standard-analyzer.html
