@@ -1,10 +1,10 @@
 ---
 layout: post
-title:  "kops state store"
-date:   2018-11-30 01:00:00
+title:  "elasticsearch indexing"
+date:   2019-08-07 23:00:00
 author: Dark
-categories: kubernetes kops
-tags: kubernetes kops
+categories: elasticsearch
+tags: elasticsearch
 ---
 
 해당 Blog post 는 kops github 의 Doc 을 번역 + 보충 설명을 통하여 state store 를 설명하고 있습니다.
